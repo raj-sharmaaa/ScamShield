@@ -1,0 +1,13 @@
+services:
+  api:
+    build: ./backend
+    ports:
+      - "8000:8000"
+    environment:
+      CORS_ORIGINS: http://localhost:3000
+      DATABASE_URL: sqlite:///./data/scamshield.db
+    volumes:
+      - scamshield-data:/app/data
+
+volumes:
+  scamshield-data:

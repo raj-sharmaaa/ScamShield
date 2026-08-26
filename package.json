@@ -1,0 +1,25 @@
+{
+  "name": "scamshield",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "dev:fullstack": "concurrently -n WEB,API -c green,blue \"next dev\" \"uvicorn app.main:app --reload --port 8000 --app-dir backend\"",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "dependencies": {
+    "lucide-react": "^0.468.0",
+    "next": "^16.3.3",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.12",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.4",
+    "concurrently": "^9.1.2"
+  }
+}
