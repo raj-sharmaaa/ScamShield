@@ -67,5 +67,3 @@ class RedisSlidingWindowLimiter:
             logging.getLogger(__name__).exception("Redis rate limiter unavailable; rejecting request")
             return False
 
-    def reset(self) -> None:
-        self.client.flushdb()
