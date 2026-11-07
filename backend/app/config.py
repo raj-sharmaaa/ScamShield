@@ -5,7 +5,7 @@ from dataclasses import dataclass
 class Settings:
     app_name: str = os.getenv('APP_NAME', 'ScamShield API')
     environment: str = os.getenv('ENVIRONMENT', 'development')
-    cors_origins: tuple[str, ...] = tuple(os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(','))
+    cors_origins: tuple[str, ...] = tuple(origin.strip() for origin in os.getenv('CORS_ORIGINS', 'http://localhost:3000').split(',') if origin.strip())
     database_url: str = os.getenv('DATABASE_URL', 'sqlite:///./data/scamshield.db')
     rate_limit_per_minute: int = int(os.getenv('RATE_LIMIT_PER_MINUTE', '60'))
     ai_analysis_enabled: bool = os.getenv('AI_ANALYSIS_ENABLED', 'false').lower() == 'true'
