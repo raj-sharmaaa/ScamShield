@@ -98,7 +98,6 @@ export default function AuthPanel() {
   const [busy, setBusy] = useState<Provider | null>(null);
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('');
-  const primaryToken = useRef<string | null>(null);
   const activeProvider = useRef<Provider | null>(null);
   const mounted = useRef(false);
 
@@ -134,7 +133,6 @@ export default function AuthPanel() {
       setEmail(result.email ?? '');
       setMessage(`Connected with ${selected === 'firebase' ? 'Firebase' : selected === 'supabase' ? 'Supabase' : 'Clerk'}.`);
     }
-    primaryToken.current = token;
     activeProvider.current = selected;
     setAuthToken(token);
     setAuthTokenProvider(async () => {
@@ -150,7 +148,6 @@ export default function AuthPanel() {
     if (!currentProvider || currentProvider === selected) return;
     const currentToken = await getProviderToken(currentProvider);
     if (!currentToken) throw new Error('The current sign-in session has expired. Sign in again before linking another provider.');
-    primaryToken.current = currentToken;
     setAuthToken(currentToken);
     const response = await fetch(`${API_URL}/api/v1/auth/link-intent`, {
       method: 'POST',
