@@ -1,271 +1,239 @@
 # ScamShield
 
-ScamShield is an explainable scam and phishing detector for URLs, emails, SMS, WhatsApp messages, and suspicious text. Paste something that feels wrong and get a risk score, a verdict, the signals that influenced it, and a practical next step.
+<p align="center">
+  <img src="docs/scamshield-banner.svg" alt="ScamShield — Pause. Check. Stay safe." width="100%" />
+</p>
 
-This repository contains a working full-stack foundation:
+<p align="center">
+  <a href="https://github.com/raj-sharmaaa/ScamShield/actions/workflows/ci.yml"><img src="https://github.com/raj-sharmaaa/ScamShield/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI" /></a>
+  <a href="https://github.com/raj-sharmaaa/ScamShield/actions/workflows/codeql.yml"><img src="https://github.com/raj-sharmaaa/ScamShield/actions/workflows/codeql.yml/badge.svg?branch=main" alt="CodeQL" /></a>
+  <img src="https://img.shields.io/badge/Next.js-16-black?logo=next.js" alt="Next.js 16" />
+  <img src="https://img.shields.io/badge/FastAPI-Python-009688?logo=fastapi" alt="FastAPI" />
+  <img src="https://img.shields.io/badge/Auth-Firebase%20%7C%20Supabase%20%7C%20Clerk-6c8cff" alt="Multi-provider authentication" />
+</p>
 
-- Next.js 16 + TypeScript frontend dashboard
-- FastAPI + Pydantic 2 backend API
-- A deterministic, explainable rules engine with rule IDs, evidence, severity, confidence, and recommendations
-- SQLAlchemy persistence with SQLite for local development and PostgreSQL for hosted deployments
-- Public test cases, API docs, rate limiting, CORS configuration, Docker support, and backend tests
+**ScamShield** is an explainable scam and phishing checker for suspicious links, emails, SMS, and messages. It highlights warning signs, gives a transparent risk score, and suggests a safer next step.
 
-The ML/NLP layer is deliberately not faked. The current rules engine is a transparent baseline that makes product behavior testable. A future model can implement the same analysis contract without changing the dashboard.
+> ScamShield is a decision-support tool, not a guarantee. A “Safe” result does not prove a message, sender, website, or payment request is legitimate.
 
-## Optional AI explanations
+## What it does
 
-ScamShield includes a server-side OpenAI explanation adapter. It does not choose the risk score or findings; it only rewrites the plain-language summary using the deterministic result. It is disabled by default.
+- **Analyze:** inspect URLs, emails, and messages with a deterministic rules engine.
+- **Explain:** show the signals and evidence behind each result.
+- **Authenticate:** sign in with Firebase Authentication, Supabase Auth, or Clerk.
+- **Link accounts:** connect more than one provider to the same ScamShield profile after authenticating both accounts.
+- **Keep data private:** saved scans, history, statistics, and reports are scoped to the signed-in ScamShield user.
+- **Deploy separately:** Next.js frontend on Vercel; FastAPI API and PostgreSQL on a Python-capable host such as Render.
 
-After revoking any accidentally exposed key and creating a replacement, configure it in the backend environment, never in frontend code:
+## Product overview
 
-```bash
-export OPENAI_API_KEY='your-rotated-key'
-export AI_ANALYSIS_ENABLED=true
-export AI_MODEL=gpt-4o-mini
-```
-
-Then start the API. The key is read only by FastAPI, requests have an 8-second timeout, output is constrained to a short JSON explanation, and any provider failure falls back to the rules summary. Do not put provider keys in `NEXT_PUBLIC_*` variables, source files, GitHub issues, or chat messages.
-
-## Quick start
-
-### Frontend only
-
-```bash
-npm install
-npm run dev
-```
-
-Open http://localhost:3000. If the API is unavailable, the interface automatically uses its local TypeScript rules engine and labels the result `Local engine`.
-
-### Full stack
-
-Use two terminals from the project root:
-
-```bash
-# Terminal 1
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn app.main:app --reload --port 8000
-
-# Terminal 2
-npm run dev
-```
-
-Or launch both processes with one command from the project root:
-
-```bash
-npm run dev:fullstack
-```
-
-This requires the backend virtual environment to be active, or FastAPI and Uvicorn to be installed in the active Python environment.
-
-Copy `.env.example` to `.env.local` if you want to configure the frontend API URL:
-
-```bash
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-The backend stores local data in `backend/data/scamshield.db`. That directory is created automatically and should not be committed. Hosted environments can use PostgreSQL through `DATABASE_URL`.
-
-### Docker
-
-Docker Compose runs the API with a persistent SQLite volume:
-
-```bash
-docker compose up --build
-```
-
-The API will be available at http://localhost:8000 and its interactive docs at http://localhost:8000/docs.
-
-## API
-
-The API is versioned under `/api/v1`.
-
-### `GET /health`
-
-Returns service status and the active engine version.
-
-### `GET /metrics`
-
-Returns in-process detector request counts by verdict. These counters reset when the API restarts and are intended for local demos until a metrics backend is added.
-
-### `POST /api/v1/analyze`
-
-Analyzes content and optionally saves the scan.
-
-```bash
-curl -X POST http://localhost:8000/api/v1/analyze \
-	-H 'content-type: application/json' \
-	-d '{
-		"type": "Message",
-		"content": "Urgent: send your password and gift card payment now",
-		"save_result": true
-	}'
-```
-
-The response contains:
-
-- `score`: integer from 0 to 100
-- `verdict`: `Safe`, `Caution`, or `High risk`
-- `summary`: short plain-language explanation
-- `findings`: rule ID, label, detail, severity, matched evidence, and recommendation
-- `confidence`: current engine confidence estimate
-- `engine`: detector version for auditability
-- `created_at` and a unique analysis `id`
-
-### `GET /api/v1/history?limit=20`
-
-Returns recent saved scans. `limit` accepts 1 to 100. In production, history is disabled until authentication is integrated; this prevents anonymous visitors from reading shared scan content.
-
-### `GET /api/v1/stats`
-
-Returns total scans, high-risk count, caution count, safe count, and average score. In production this endpoint is also disabled until authentication and per-user authorization are configured.
-
-### `GET /api/v1/test-cases`
-
-Returns public recruiter-friendly scenarios covering delivery scams, account locks, benign invoices, and prize bait.
-
-### `POST /api/v1/reports`
-
-Accepts a correction with `reason` equal to `missed_scam`, `false_positive`, or `other`. Report submission is disabled in production until authentication is integrated.
-
-## Detection engine
-
-The current engine is intentionally inspectable. It checks for:
-
-1. Urgency and deadline pressure
-2. Password, OTP, passcode, and login requests
-3. Irreversible or unusual payment methods
-4. Fake prizes and unrealistic rewards
-5. Shortened URLs
-6. Fear-based account language
-7. Suspicious sender top-level domains
-8. Numeric, encoded, or deceptive URL hosts
-
-Each rule has a stable ID such as `identity.credentials` or `link.shortened`. The score is capped below 100 and starts with a small URL prior when a link is present. This is a baseline, not a guarantee of safety: a safe verdict never means a message is proven trustworthy.
+<p align="center">
+  <img src="docs/scamshield-overview.svg" alt="ScamShield product overview showing scan, explain, and protect steps" width="100%" />
+</p>
 
 ## Architecture
 
-```text
-Browser (Next.js)
-		|
-		| POST /api/v1/analyze
-		v
-FastAPI application
-		|
-		+-- request validation and CORS
-		+-- in-memory rate limiting locally, with optional Redis-backed shared rate limiting
-		+-- explainable detector
-		+-- repository interface
-						|
-						+-- SQLite for local development
-						+-- PostgreSQL for hosted deployments
-```
+<p align="center">
+  <img src="docs/architecture.svg" alt="ScamShield architecture: three identity providers, a verified FastAPI API, PostgreSQL, and the Next.js dashboard" width="100%" />
+</p>
 
-Important code locations:
+The browser obtains an identity token from the selected provider. FastAPI verifies its signature and claims against that provider's public signing keys, then maps the provider subject to an internal ScamShield user ID. The database stores that user ID with each scan and report.
 
-- `app/page.tsx`: dashboard and scan interaction
-- `lib/api.ts`: browser-to-API client with local fallback
-- `lib/analyzer.ts`: frontend fallback engine
-- `backend/app/main.py`: HTTP routes, CORS, and rate limiting
-- `backend/app/analyzer.py`: backend detector and public test cases
-- `backend/app/schemas.py`: request and response contracts
-- `backend/app/repository.py`: persistence boundary
-- `backend/app/config.py`: environment-backed settings
-- `backend/app/services.py`: analysis orchestration
-- `backend/app/url_inspector.py`: safe lexical URL inspection
-- `backend/app/rate_limit.py`: thread-safe sliding-window limiter
-- `backend/app/security.py`: fingerprints and request security helpers
-- `backend/app/metrics.py`: in-process detector metrics
-- `scripts/check_project.py`: source structure verification
-- `scripts/seed_demo.py`: local demo data seeder
-- `backend/tests/test_api.py`: API behavior tests
-- `backend/tests/test_analyzer.py`: detector and URL inspection tests
-- `backend/tests/test_repository.py`: persistence tests
+**Email addresses are never used to merge accounts.** A second provider is linked only after the signed-in user creates a short-lived one-time link request and the second provider authenticates successfully. The opaque link request survives the provider redirect; raw primary identity tokens are not placed in browser storage. If a provider identity already belongs to another ScamShield account, linking is rejected.
 
-The repository intentionally contains multiple small modules instead of one giant backend file. This keeps detector, transport, persistence, security, metrics, and configuration concerns independently testable.
+## Tech stack
 
-## Configuration
+| Layer | Technology |
+| --- | --- |
+| Web application | Next.js 16, React 19, TypeScript |
+| API | FastAPI, Pydantic |
+| Detection | Explainable Python rules engine |
+| Authentication | Firebase Auth, Supabase Auth, Clerk |
+| Identity verification | PyJWT + provider JWKS |
+| Persistence | SQLAlchemy, PostgreSQL in hosted deployments |
+| Rate limiting | Redis-backed when REDIS_URL is configured |
+| Hosting | Vercel frontend, Render API blueprint |
+| Automation | GitHub Actions CI + CodeQL |
 
-| Variable | Default | Purpose |
-| --- | --- | --- |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8000` | API URL used by the browser |
-| `CORS_ORIGINS` | `http://localhost:3000` | Comma-separated allowed frontend origins |
-| `DATABASE_URL` | `sqlite:///./data/scamshield.db` | Local persistence URL |
-| `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API request limit |
+## Authentication setup
 
-The repository supports SQLite locally and PostgreSQL in hosted environments. Set `DATABASE_URL` to the provider's PostgreSQL connection string for persistent production storage. Set `REDIS_URL` to a managed Redis connection string for shared rate limits across API instances; without it, limits are process-local.
+All three providers are supported by one backend identity layer. Configure only the providers that should be enabled. The frontend sign-in panel loads the provider browser SDKs on demand from their vendor CDNs; a provider needs its own public browser configuration and backend verification settings. Firebase and Supabase are configured for Google OAuth in this starter UI; Clerk uses the sign-in methods enabled in its dashboard.
 
-## Development commands
+### 1. Firebase Authentication
 
-```bash
-# Frontend
+1. Create or open a Firebase project.
+2. Enable **Authentication → Sign-in method → Google**.
+3. Add the deployed frontend domain to **Authentication → Settings → Authorized domains**.
+4. Copy the Web App API key, Auth domain, and Project ID into the frontend environment.
+5. Set FIREBASE_PROJECT_ID in the backend to the same Project ID.
+
+Firebase ID tokens are verified against Google's Secure Token signing keys, the Firebase issuer, and the project audience.
+
+### 2. Supabase Auth
+
+1. Create or open a Supabase project.
+2. Enable Google under **Authentication → Providers** and configure the OAuth client.
+3. Add the local and deployed frontend URLs to the Supabase redirect URL allowlist.
+4. Set the Supabase project URL and anon/publishable key in the frontend.
+5. Set SUPABASE_URL in the backend to the same project URL.
+6. Use an asymmetric JWT signing key (RS256 or ES256) so the API can verify tokens using the project's JWKS endpoint.
+
+The Supabase anon/publishable key is intended for browser use. Never put the service-role key in the frontend.
+
+### 3. Clerk
+
+1. Create or open a Clerk application.
+2. Enable the sign-in methods required by the product.
+3. Add local and deployed frontend origins to the Clerk allowed origins/redirect settings.
+4. Set the Clerk publishable key in the frontend.
+5. Read the exact iss claim from a Clerk session token and set it as CLERK_ISSUER.
+6. Set CLERK_JWKS_URL to that Clerk instance's /.well-known/jwks.json endpoint.
+
+The backend checks the token issuer and signature against the configured Clerk JWKS. Do not use a secret key in browser configuration.
+
+### Frontend environment variables
+
+Set these in Vercel → Project → Settings → Environment Variables (and in .env.local for local development):
+
+| Variable | Purpose |
+| --- | --- |
+| NEXT_PUBLIC_API_URL | Public HTTPS URL of the FastAPI service |
+| NEXT_PUBLIC_FIREBASE_API_KEY | Firebase Web App API key |
+| NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN | Firebase Auth domain |
+| NEXT_PUBLIC_FIREBASE_PROJECT_ID | Firebase project ID |
+| NEXT_PUBLIC_SUPABASE_URL | Supabase project URL |
+| NEXT_PUBLIC_SUPABASE_ANON_KEY | Supabase anon/publishable key |
+| NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY | Clerk publishable key |
+
+### Backend environment variables
+
+Set these on the API host. These are not NEXT_PUBLIC_ variables:
+
+| Variable | Purpose |
+| --- | --- |
+| FIREBASE_PROJECT_ID | Enables Firebase token verification |
+| SUPABASE_URL | Enables Supabase token verification and JWKS lookup |
+| CLERK_ISSUER | Exact issuer (iss) expected in Clerk tokens |
+| CLERK_JWKS_URL | Clerk public signing-key endpoint |
+| DATABASE_URL | PostgreSQL connection string in production |
+| CORS_ORIGINS | Exact frontend origins, comma-separated |
+| REDIS_URL | Optional shared rate-limit store |
+| OPENAI_API_KEY | Optional server-only explanation key |
+
+Copy .env.example as a starting point. Never commit real credentials. Browser API keys and publishable/anon keys are public by design; provider secret keys, service-role keys, database passwords, and OpenAI keys must remain server-side.
+
+## Local development
+
+### Requirements
+
+- Node.js 20.9+
+- Python 3.12+
+- Git
+
+### Start the API
+
+From the repository root:
+
+~~~bash
+cd backend
+python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+# macOS/Linux:
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn app.main:app --reload --port 8000
+~~~
+
+### Start the frontend
+
+In a second terminal at the repository root:
+
+~~~bash
+npm ci
 npm run dev
+~~~
+
+Open http://localhost:3000. Set NEXT_PUBLIC_API_URL=http://localhost:8000 in .env.local to connect the dashboard to the local API.
+
+### Run checks
+
+~~~bash
+npm run typecheck
 npm run build
+python -m pytest backend/tests -q
+~~~
 
-# Backend
-python3 -m pytest backend/tests -q
-cd backend && uvicorn app.main:app --reload
-```
+## API routes
 
-## Deployment readiness
+| Method | Route | Access |
+| --- | --- | --- |
+| GET | /health | Public |
+| GET | /metrics | Public, process-local counters |
+| GET | /api/v1/auth/providers | Public, lists configured providers |
+| POST | /api/v1/auth/session | Valid provider bearer token |
+| POST | /api/v1/auth/link-intent | Signed-in user starts a short-lived, one-time link request |
+| POST | /api/v1/auth/complete-link | Second provider token + one-time link request |
+| POST | /api/v1/analyze | Public scan; only authenticated scans are saved |
+| GET | /api/v1/history | Authenticated, current user only |
+| GET | /api/v1/stats | Authenticated, current user only |
+| GET | /api/v1/test-cases | Public |
+| POST | /api/v1/reports | Authenticated, current user only |
 
-The Next.js dashboard can be deployed to Vercel as a frontend. The FastAPI service is a separate application and must be deployed to a Python-capable host; Vercel does not automatically deploy the `backend/` directory as part of this Next.js app.
+Interactive API documentation is available at /docs on the running FastAPI service.
 
-For a connected deployment:
+## Deployment
 
-1. Deploy the FastAPI service from `backend/` on a Python-capable host.
-2. Configure that service with a persistent database. The current SQLite adapter is for local development and is not suitable for serverless production storage.
-3. Set `CORS_ORIGINS` on the API to the exact deployed frontend origin (for example, `https://your-app.vercel.app`).
-4. Set `NEXT_PUBLIC_API_URL` in Vercel to the public HTTPS URL of the API, then redeploy the frontend.
-5. Keep `OPENAI_API_KEY` only in the backend environment. Enable `AI_ANALYSIS_ENABLED=true` only if users have been clearly informed that up to 10,000 characters of submitted content may be sent to OpenAI for explanation.
+### API on Render
 
-If `NEXT_PUBLIC_API_URL` is not configured, the dashboard uses its local TypeScript rules engine. Backend history, reports, and aggregate statistics will not be available in that mode. Do not present local fallback scans as cloud-persisted or AI-powered.
+The repository includes render.yaml for a FastAPI Docker service and managed PostgreSQL. Review the plan and estimated charges in Render before applying the blueprint.
 
-This repository is a development-ready foundation, not a production security service. Before opening it to public traffic, add persistent PostgreSQL storage, authentication and per-user authorization, shared rate limiting, monitoring, and a security/privacy review. The detector is heuristic and cannot certify that a message or URL is safe.
+1. Apply the Render Blueprint from this repository.
+2. Set the backend provider variables for every authentication provider being enabled.
+3. Set CORS_ORIGINS to the exact Vercel production origin.
+4. Copy the deployed API HTTPS URL.
 
-## Hosted backend (Render blueprint)
+### Frontend on Vercel
 
-A `render.yaml` blueprint is included to provision a Docker-based FastAPI service and a managed PostgreSQL database. Review the plan and estimated costs in Render before applying it. After deployment, copy the API's public HTTPS URL into Vercel as `NEXT_PUBLIC_API_URL`, and set `CORS_ORIGINS` in Render to the exact Vercel origin. Keep AI explanations disabled unless the privacy notice and consent flow are appropriate for submitted data.
+1. Import this GitHub repository into Vercel.
+2. Add NEXT_PUBLIC_API_URL with the deployed API URL.
+3. Add the public Firebase, Supabase, and Clerk variables for the providers being enabled.
+4. Redeploy the frontend after adding or changing environment variables.
 
-The blueprint does not create a Vercel project or set Vercel environment variables automatically. It also does not provide user authentication. In production, anonymous scan persistence, history, statistics, and reports are disabled by default. Add an identity provider and per-user authorization before enabling stored user data. Set `REDIS_URL` to a managed Redis connection string to use the distributed limiter; otherwise the limiter is process-local.
+The Render blueprint does not create a Vercel project or configure third-party identity-provider dashboards. Those steps require access to the relevant accounts.
 
-## Security notes
+## Detection limits and privacy
 
-- Do not send secrets, real passwords, or private customer data to a development instance.
-- The current detector does not fetch or visit submitted URLs, which avoids SSRF in the starter service.
-- URL analysis is lexical only; it does not claim domain reputation, malware status, or page safety.
-- Rate limiting is in-memory and per process. Use a shared Redis limiter behind a load balancer.
-- Use PostgreSQL with encrypted connections for hosted deployments. Add formal schema migrations before evolving the database schema.
-- Add an identity provider, per-user authorization, audit logging, secret management, request tracing, and abuse monitoring before enabling user-specific data features. Anonymous scan persistence, history, statistics, and reports are disabled in production by default.
-- Treat model output as advisory. Never auto-delete messages or block accounts solely from one score.
+- The current detector is a deterministic heuristic baseline, not a trained ML model.
+- URL inspection is lexical; ScamShield does not visit submitted URLs or claim live domain reputation.
+- A result can be wrong. Verify urgent payment, password, and account requests through a trusted channel.
+- Scans can be analyzed without an account, but anonymous scans are not persisted.
+- Saved history, statistics, and reports require a verified provider identity and are isolated by internal user ID.
+- Linking providers requires a current authenticated session plus a second valid provider token. Matching email addresses do not trigger account merging.
+- Optional OpenAI explanations are disabled by default. If enabled, submitted content may be sent to OpenAI; disclose this clearly before enabling the feature for real users.
+- Use HTTPS, restrict CORS to exact origins, rotate exposed secrets, and review provider redirect settings before launch.
+
+## Repository layout
+
+~~~text
+app/                    Next.js dashboard and sign-in panel
+backend/app/            FastAPI routes, auth, detector, and repository
+backend/tests/          API, detector, and persistence tests
+docs/                   Architecture and product SVG artwork
+lib/                    Frontend API client and local fallback detector
+scripts/                Repository structure validation
+.github/workflows/      CI and CodeQL automation
+render.yaml             Render API + PostgreSQL blueprint
+~~~
 
 ## Roadmap
 
-### Detection
-
-- Add a trained text classifier with calibrated probabilities
-- Add URL reputation providers behind a safe, isolated fetch worker
-- Add brand impersonation and homoglyph detection
-- Add language detection and multilingual scam patterns
-- Add evaluation datasets, precision/recall reporting, and threshold tuning
-
-### Platform
-
-- Add formal PostgreSQL schema migrations and a connection pool
-- Add user accounts, workspaces, and authenticated scan history
-- Add Redis-backed rate limiting and a background job queue
-- Add structured logs, OpenTelemetry traces, and error monitoring
-- Add CI for frontend build, API tests, linting, dependency audits, and container scans
-
-### Product
-
-- Build the full history and analytics views from `/history` and `/stats`
-- Add report feedback flow from the result panel
-- Add shareable public test-case links
-- Add browser extension and email-forwarding ingestion with explicit consent
+- Calibrated ML/NLP detector with a published evaluation set
+- URL reputation integrations behind an isolated, safe worker
+- Passwordless and passkey options across identity providers
+- Account recovery and a dedicated account-management screen
+- Database migrations, audit events, and operational monitoring
+- Browser extension and user-consented email ingestion
 
 ## License
 

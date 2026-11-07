@@ -1,10 +1,12 @@
 from datetime import datetime
 from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 ScanType = Literal['URL', 'Email', 'Message']
 Severity = Literal['high', 'medium', 'low']
 Verdict = Literal['Safe', 'Caution', 'High risk']
+
 
 class AnalyzeRequest(BaseModel):
     content: str = Field(min_length=1, max_length=50_000)
@@ -19,6 +21,7 @@ class AnalyzeRequest(BaseModel):
             raise ValueError('Content cannot be blank')
         return value
 
+
 class Finding(BaseModel):
     rule_id: str
     label: str
@@ -26,6 +29,7 @@ class Finding(BaseModel):
     severity: Severity
     evidence: str | None = None
     recommendation: str
+
 
 class Analysis(BaseModel):
     id: str
@@ -38,6 +42,7 @@ class Analysis(BaseModel):
     created_at: datetime
     engine: str
 
+
 class HistoryItem(BaseModel):
     id: str
     preview: str
@@ -46,12 +51,14 @@ class HistoryItem(BaseModel):
     verdict: Verdict
     created_at: datetime
 
+
 class Stats(BaseModel):
     total_scans: int
     high_risk: int
     caution: int
     safe: int
     average_score: float
+
 
 class TestCase(BaseModel):
     id: str
@@ -61,7 +68,18 @@ class TestCase(BaseModel):
     expected_verdict: Verdict
     tags: list[str]
 
+
 class ReportRequest(BaseModel):
     content: str = Field(min_length=1, max_length=50_000)
     reason: Literal['missed_scam', 'false_positive', 'other']
     notes: str | None = Field(default=None, max_length=2_000)
+
+
+class AuthLinkIntentRequest(BaseModel):
+    provider: Literal['firebase', 'supabase', 'clerk']
+
+
+class AuthCompleteLinkRequest(BaseModel):
+    provider: Literal['firebase', 'supabase', 'clerk']
+    identity_token: str = Field(min_length=20, max_length=20_000)
+    link_intent: str = Field(min_length=32, max_length=200)
