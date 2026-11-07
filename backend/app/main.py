@@ -1,6 +1,6 @@
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
@@ -21,7 +21,7 @@ async def lifespan(_: FastAPI):
     yield
 
 app = FastAPI(title=settings.app_name, version='0.1.0', description='Explainable scam and phishing detection API.', lifespan=lifespan)
-app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_credentials=True, allow_methods=['GET', 'POST'], allow_headers=['*'])
+app.add_middleware(CORSMiddleware, allow_origins=list(settings.cors_origins), allow_methods=['GET', 'POST'], allow_headers=['Content-Type', 'Authorization'])
 
 @app.middleware('http')
 async def limit_requests(request: Request, call_next):
