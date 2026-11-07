@@ -4,10 +4,13 @@ services:
     ports:
       - "8000:8000"
     environment:
+      ENVIRONMENT: development
       CORS_ORIGINS: http://localhost:3000
-      DATABASE_URL: sqlite:///./data/scamshield.db
+      DATABASE_URL: sqlite:////app/data/scamshield.db
+      RATE_LIMIT_PER_MINUTE: 60
     volumes:
       - scamshield-data:/app/data
+    restart: unless-stopped
 
 volumes:
   scamshield-data:
