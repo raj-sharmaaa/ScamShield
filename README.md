@@ -67,7 +67,7 @@ Copy `.env.example` to `.env.local` if you want to configure the frontend API UR
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-The backend stores local data in `backend/data/scamshield.db`. That directory is created automatically and should not be committed.
+The backend stores local data in `backend/data/scamshield.db`. That directory is created automatically and should not be committed. Hosted environments can use PostgreSQL through `DATABASE_URL`.
 
 ### Docker
 
@@ -117,11 +117,11 @@ The response contains:
 
 ### `GET /api/v1/history?limit=20`
 
-Returns recent saved scans. `limit` accepts 1 to 100.
+Returns recent saved scans. `limit` accepts 1 to 100. In production, history is disabled until authentication is integrated; this prevents anonymous visitors from reading shared scan content.
 
 ### `GET /api/v1/stats`
 
-Returns total scans, high-risk count, caution count, safe count, and average score. This powers the future dashboard analytics view.
+Returns total scans, high-risk count, caution count, safe count, and average score. In production this endpoint is also disabled until authentication and per-user authorization are configured.
 
 ### `GET /api/v1/test-cases`
 
@@ -129,7 +129,7 @@ Returns public recruiter-friendly scenarios covering delivery scams, account loc
 
 ### `POST /api/v1/reports`
 
-Accepts a user correction with `reason` equal to `missed_scam`, `false_positive`, or `other`. Reports are stored for future evaluation and model improvement.
+Accepts a correction with `reason` equal to `missed_scam`, `false_positive`, or `other`. Report submission is disabled in production until authentication is integrated.
 
 ## Detection engine
 
@@ -156,12 +156,12 @@ Browser (Next.js)
 FastAPI application
 		|
 		+-- request validation and CORS
-		+-- in-memory IP rate window
+		+-- in-memory rate limiting locally, with optional Redis-backed shared rate limiting
 		+-- explainable detector
 		+-- repository interface
 						|
 						+-- SQLite for local development
-						+-- PostgreSQL adapter planned for production
+						+-- PostgreSQL for hosted deployments
 ```
 
 Important code locations:
@@ -230,7 +230,7 @@ This repository is a development-ready foundation, not a production security ser
 
 A `render.yaml` blueprint is included to provision a Docker-based FastAPI service and a managed PostgreSQL database. Review the plan and estimated costs in Render before applying it. After deployment, copy the API's public HTTPS URL into Vercel as `NEXT_PUBLIC_API_URL`, and set `CORS_ORIGINS` in Render to the exact Vercel origin. Keep AI explanations disabled unless the privacy notice and consent flow are appropriate for submitted data.
 
-The blueprint does not create a Vercel project or set Vercel environment variables automatically. It also does not provide user authentication. Do not treat shared scan history or feedback reports as private user data until an identity provider and per-user authorization have been integrated.
+The blueprint does not create a Vercel project or set Vercel environment variables automatically. It also does not provide user authentication. In production, anonymous scan persistence, history, statistics, and reports are disabled by default. Add an identity provider and per-user authorization before enabling stored user data. Set `REDIS_URL` to a managed Redis connection string to use the distributed limiter; otherwise the limiter is process-local.
 
 ## Security notes
 
