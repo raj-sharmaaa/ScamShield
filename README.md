@@ -211,6 +211,22 @@ python3 -m pytest backend/tests -q
 cd backend && uvicorn app.main:app --reload
 ```
 
+## Deployment readiness
+
+The Next.js dashboard can be deployed to Vercel as a frontend. The FastAPI service is a separate application and must be deployed to a Python-capable host; Vercel does not automatically deploy the `backend/` directory as part of this Next.js app.
+
+For a connected deployment:
+
+1. Deploy the FastAPI service from `backend/` on a Python-capable host.
+2. Configure that service with a persistent database. The current SQLite adapter is for local development and is not suitable for serverless production storage.
+3. Set `CORS_ORIGINS` on the API to the exact deployed frontend origin (for example, `https://your-app.vercel.app`).
+4. Set `NEXT_PUBLIC_API_URL` in Vercel to the public HTTPS URL of the API, then redeploy the frontend.
+5. Keep `OPENAI_API_KEY` only in the backend environment. Enable `AI_ANALYSIS_ENABLED=true` only if users have been clearly informed that up to 10,000 characters of submitted content may be sent to OpenAI for explanation.
+
+If `NEXT_PUBLIC_API_URL` is not configured, the dashboard uses its local TypeScript rules engine. Backend history, reports, and aggregate statistics will not be available in that mode. Do not present local fallback scans as cloud-persisted or AI-powered.
+
+This repository is a development-ready foundation, not a production security service. Before opening it to public traffic, add persistent PostgreSQL storage, authentication and per-user authorization, shared rate limiting, monitoring, and a security/privacy review. The detector is heuristic and cannot certify that a message or URL is safe.
+
 ## Security notes
 
 - Do not send secrets, real passwords, or private customer data to a development instance.

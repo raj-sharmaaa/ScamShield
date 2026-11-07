@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from .schemas import Analysis, Finding, ScanType
+from .url_inspector import inspect_urls
 
 @dataclass(frozen=True)
 class Rule:
@@ -42,15 +43,17 @@ def _evidence(pattern: re.Pattern[str], content: str) -> str | None:
     return content[start:end].strip()
 
 def _url_findings(content: str) -> list[Finding]:
-    findings: list[Finding] = []
-    for raw_url in re.findall(r'https?://[^\s)]+|www\.[^\s)]+', content, re.I):
-        parsed = urlparse(raw_url if '://' in raw_url else f'https://{raw_url}')
-        host = (parsed.hostname or '').lower()
-        if host.startswith('xn--') or any(part.isdigit() for part in host.split('.')):
-            findings.append(Finding(rule_id='url.host_anomaly', label='Unusual link host', detail='The destination uses an encoded or numeric host that deserves verification.', severity='medium', evidence=host, recommendation='Do not open it. Visit the organisation through a known bookmark.'))
-        if parsed.username:
-            findings.append(Finding(rule_id='url.at_symbol', label='Deceptive URL structure', detail='The URL contains a username before the real host, a common impersonation trick.', severity='high', evidence=raw_url, recommendation='Ignore the link and navigate to the official site manually.'))
-    return findings
+    return [
+        Finding(
+            rule_id=signal.rule_id,
+            label=signal.label,
+            detail=signal.detail,
+            severity=signal.severity,
+            evidence=signal.evidence,
+            recommendation=signal.recommendation,
+        )
+        for signal in inspect_urls(content)
+    ]
 
 def analyze(content: str, scan_type: ScanType) -> Analysis:
     findings = [Finding(rule_id=rule.rule_id, label=rule.label, detail=rule.detail, severity=rule.severity, evidence=_evidence(rule.pattern, content), recommendation=rule.recommendation) for rule in RULES if rule.pattern.search(content)]

@@ -231,3 +231,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Vercel and browser-test output
+.vercel/
+playwright-report/
+test-results/
