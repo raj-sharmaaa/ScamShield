@@ -1,6 +1,6 @@
 import { analyzeInput, type Analysis, type ScanType } from './analyzer';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:8000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ?? '';
 
 export type ApiState = 'connected' | 'fallback';
 
@@ -29,6 +29,8 @@ async function getJson<T>(path: string): Promise<T> {
 }
 
 export async function analyzeWithBackend(content: string, type: ScanType): Promise<{ analysis: Analysis; state: ApiState }> {
+  if (!API_URL) return { state: 'fallback', analysis: analyzeInput(content, type) };
+
   try {
     const response = await fetch(`${API_URL}/api/v1/analyze`, {
       method: 'POST',
@@ -47,6 +49,7 @@ export async function analyzeWithBackend(content: string, type: ScanType): Promi
         summary: result.summary,
         type: result.type ?? result.scan_type,
         findings: result.findings,
+        confidence: typeof result.confidence === 'number' ? result.confidence : undefined,
       },
     };
   } catch {
