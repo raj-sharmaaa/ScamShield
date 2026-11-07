@@ -82,22 +82,30 @@ export default function AuthPanel() {
   const [provider, setProvider] = useState<Provider | null>(null);
   const [email, setEmail] = useState('');
   const [busy, setBusy] = useState<Provider | null>(null);
+  const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('');
   const primaryToken = useRef<string | null>(null);
   const mounted = useRef(false);
 
   async function acceptToken(token: string, selected: Provider) {
     if (!API_URL) throw new Error('Set NEXT_PUBLIC_API_URL before enabling account sign-in.');
-    if (primaryToken.current && provider && provider !== selected) {
-      const linked = await fetch(`${API_URL}/api/v1/auth/link`, {
+    const pendingRaw = window.sessionStorage.getItem('scamshield:pending-link');
+    let pending: { provider: Provider; link_intent: string } | null = null;
+    if (pendingRaw) {
+      try { pending = JSON.parse(pendingRaw) as { provider: Provider; link_intent: string }; } catch { window.sessionStorage.removeItem('scamshield:pending-link'); }
+    }
+    if (pending && pending.provider === selected) {
+      const linked = await fetch(`${API_URL}/api/v1/auth/complete-link`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${primaryToken.current}` },
-        body: JSON.stringify({ provider: selected, identity_token: token }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ provider: selected, identity_token: token, link_intent: pending.link_intent }),
       });
+      window.sessionStorage.removeItem('scamshield:pending-link');
       if (!linked.ok) {
         const body = await linked.json().catch(() => ({}));
         throw new Error(body.detail ?? 'Could not link this provider account.');
       }
+      setMessage(`Linked ${selected} to the existing ScamShield account.`);
     } else {
       const session = await fetch(`${API_URL}/api/v1/auth/session`, {
         method: 'POST',
@@ -109,18 +117,37 @@ export default function AuthPanel() {
       }
       const result = await session.json();
       setEmail(result.email ?? '');
+      setMessage(`Connected with ${selected === 'firebase' ? 'Firebase' : selected === 'supabase' ? 'Supabase' : 'Clerk'}.`);
     }
     primaryToken.current = token;
     setAuthToken(token);
     setProvider(selected);
-    setMessage(`Connected with ${selected === 'firebase' ? 'Firebase' : selected === 'supabase' ? 'Supabase' : 'Clerk'}.`);
     window.dispatchEvent(new Event('scamshield-auth-changed'));
+  }
+
+  async function prepareLink(selected: Provider) {
+    if (!primaryToken.current || !provider || provider === selected) return;
+    const response = await fetch(`${API_URL}/api/v1/auth/link-intent`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${primaryToken.current}` },
+      body: JSON.stringify({ provider: selected }),
+    });
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail ?? 'Could not start secure account linking.');
+    }
+    const result = await response.json();
+    window.sessionStorage.setItem('scamshield:pending-link', JSON.stringify({
+      provider: selected,
+      link_intent: result.link_intent,
+    }));
   }
 
   async function signIn(selected: Provider) {
     setBusy(selected);
     setMessage('');
     try {
+      await prepareLink(selected);
       if (selected === 'firebase') {
         if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) throw new Error('Firebase public configuration is missing.');
         const auth = await getFirebaseAuth();
@@ -166,37 +193,54 @@ export default function AuthPanel() {
     let active = true;
     async function restoreSessions() {
       try {
-        if (supabaseUrl && supabaseKey) {
-          const client = await getSupabase();
-          const { data } = await client.auth.getSession();
-          if (active && data.session?.access_token) {
-            await acceptToken(data.session.access_token, 'supabase');
-            return;
-          }
+        const defaultOrder: Provider[] = ['supabase', 'firebase', 'clerk'];
+        let pendingProvider: Provider | null = null;
+        const pendingRaw = window.sessionStorage.getItem('scamshield:pending-link');
+        if (pendingRaw) {
+          try { pendingProvider = (JSON.parse(pendingRaw) as { provider: Provider }).provider; } catch { window.sessionStorage.removeItem('scamshield:pending-link'); }
         }
-        if (firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId) {
-          const auth = await getFirebaseAuth();
-          const currentUser = await new Promise<FirebaseUser | null>((resolve) => {
-            let unsubscribe = () => undefined;
-            unsubscribe = auth.onAuthStateChanged((user) => {
-              unsubscribe();
-              resolve(user);
+        const order = pendingProvider
+          ? [pendingProvider, ...defaultOrder.filter((item) => item !== pendingProvider)]
+          : defaultOrder;
+
+        for (const candidate of order) {
+          if (candidate === 'supabase' && supabaseUrl && supabaseKey) {
+            const client = await getSupabase();
+            const { data } = await client.auth.getSession();
+            if (active && data.session?.access_token) {
+              await acceptToken(data.session.access_token, 'supabase');
+              return;
+            }
+          }
+          if (candidate === 'firebase' && firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId) {
+            const auth = await getFirebaseAuth();
+            const currentUser = await new Promise<FirebaseUser | null>((resolve) => {
+              let unsubscribe = () => undefined;
+              unsubscribe = auth.onAuthStateChanged((user) => {
+                unsubscribe();
+                resolve(user);
+              });
             });
-          });
-          if (active && currentUser) {
-            await acceptToken(await currentUser.getIdToken(), 'firebase');
-            return;
+            if (active && currentUser) {
+              await acceptToken(await currentUser.getIdToken(), 'firebase');
+              return;
+            }
           }
-        }
-        if (clerkKey) {
-          const clerk = await getClerk();
-          if (active && clerk.session) {
-            const token = await clerk.session.getToken();
-            if (token) await acceptToken(token, 'clerk');
+          if (candidate === 'clerk' && clerkKey) {
+            const clerk = await getClerk();
+            if (active && clerk.session) {
+              const token = await clerk.session.getToken();
+              if (token) {
+                await acceptToken(token, 'clerk');
+                return;
+              }
+            }
           }
         }
       } catch {
         // A missing or expired provider session should not block public scanning.
+      } finally {
+        if (active) setReady(true);
       }
     }
     void restoreSessions();
@@ -210,9 +254,9 @@ export default function AuthPanel() {
         <span><strong>{provider ? 'Account connected' : 'Save your scans'}</strong><small>{provider ? (email || `Signed in with ${provider}`) : 'Choose a secure sign-in provider'}</small></span>
       </div>
       <div className="auth-provider-list">
-        <button type="button" onClick={() => signIn('firebase')} disabled={busy !== null}>{busy === 'firebase' ? 'Connecting…' : 'Continue with Firebase'}</button>
-        <button type="button" onClick={() => signIn('supabase')} disabled={busy !== null}>{busy === 'supabase' ? 'Connecting…' : 'Continue with Supabase'}</button>
-        <button type="button" onClick={() => signIn('clerk')} disabled={busy !== null}>{busy === 'clerk' ? 'Connecting…' : 'Continue with Clerk'}</button>
+        <button type="button" onClick={() => signIn('firebase')} disabled={busy !== null || !ready}>{busy === 'firebase' ? 'Connecting…' : 'Continue with Firebase'}</button>
+        <button type="button" onClick={() => signIn('supabase')} disabled={busy !== null || !ready}>{busy === 'supabase' ? 'Connecting…' : 'Continue with Supabase'}</button>
+        <button type="button" onClick={() => signIn('clerk')} disabled={busy !== null || !ready}>{busy === 'clerk' ? 'Connecting…' : 'Continue with Clerk'}</button>
       </div>
       {message && <p className="auth-message" role="status">{message}</p>}
       <small className="auth-caption">Link another provider while signed in to keep one ScamShield history.</small>

@@ -14,7 +14,7 @@ from .metrics import metrics
 from .repository import ScanRepository
 from .rate_limit import RedisSlidingWindowLimiter, SlidingWindowLimiter
 from .services import analyze_content
-from .schemas import Analysis, AnalyzeRequest, AuthLinkRequest, HistoryItem, ReportRequest, Stats, TestCase
+from .schemas import Analysis, AnalyzeRequest, AuthCompleteLinkRequest, AuthLinkIntentRequest, HistoryItem, ReportRequest, Stats, TestCase
 
 repository = ScanRepository(settings.database_url)
 rate_limiter = RedisSlidingWindowLimiter(settings.redis_url, settings.rate_limit_per_minute) if settings.redis_url else SlidingWindowLimiter(settings.rate_limit_per_minute)
@@ -97,22 +97,32 @@ def create_session(user: Annotated[tuple[Identity, str], Depends(require_user)])
     return {'user_id': user_id, 'provider': identity.provider, 'email': identity.email}
 
 
-@app.post('/api/v1/auth/link')
-def link_provider(
-    payload: AuthLinkRequest,
+@app.post('/api/v1/auth/link-intent')
+def create_link_intent(
+    payload: AuthLinkIntentRequest,
     user: Annotated[tuple[Identity, str], Depends(require_user)],
-) -> dict[str, str]:
+) -> dict[str, object]:
     _, user_id = user
+    return {
+        'link_intent': repository.create_link_intent(user_id, payload.provider),
+        'expires_in': 600,
+    }
+
+
+@app.post('/api/v1/auth/complete-link')
+def complete_link(payload: AuthCompleteLinkRequest) -> dict[str, str]:
     try:
         linked = verify_identity_token(payload.identity_token)
         if linked.provider != payload.provider:
             raise HTTPException(status_code=400, detail='The selected provider does not match the supplied token.')
-        repository.link_identity(user_id, linked.provider, linked.subject, linked.email)
+        user_id = repository.complete_link_intent(
+            payload.link_intent, linked.provider, linked.subject, linked.email
+        )
     except AuthenticationError as exc:
         raise HTTPException(status_code=401, detail=str(exc)) from exc
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
-    return {'status': 'linked', 'provider': linked.provider}
+    return {'status': 'linked', 'provider': linked.provider, 'user_id': user_id}
 
 
 @app.post('/api/v1/analyze', response_model=Analysis, status_code=status.HTTP_200_OK)

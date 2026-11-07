@@ -17,20 +17,43 @@ def test_repository_persists_user_scoped_history_and_stats(tmp_path) -> None:
     repository.close()
 
 
-def test_identity_links_share_one_internal_user_only_when_explicitly_linked(tmp_path) -> None:
+def test_provider_linking_requires_one_time_intent(tmp_path) -> None:
     repository = ScanRepository(f'sqlite:///{tmp_path}/identities.db')
     firebase_user = repository.get_or_create_user('firebase', 'firebase-subject', 'same@example.com')
-    supabase_user = repository.get_or_create_user('supabase', 'supabase-subject', 'same@example.com')
-    assert firebase_user != supabase_user
+    unrelated_supabase_user = repository.get_or_create_user('supabase', 'unrelated-supabase-subject', 'same@example.com')
+    assert firebase_user != unrelated_supabase_user
 
-    repository.link_identity(firebase_user, 'supabase', 'supabase-subject-2', 'same@example.com')
-    assert repository.get_or_create_user('supabase', 'supabase-subject-2', 'same@example.com') == firebase_user
+    intent = repository.create_link_intent(firebase_user, 'supabase')
+    linked_user = repository.complete_link_intent(intent, 'supabase', 'linked-supabase-subject', 'same@example.com')
+    assert linked_user == firebase_user
+    assert repository.get_or_create_user('supabase', 'linked-supabase-subject', 'same@example.com') == firebase_user
 
     try:
-        repository.link_identity(firebase_user, 'supabase', 'supabase-subject', 'same@example.com')
-        assert False, 'An identity already owned by another account must not be merged.'
+        repository.complete_link_intent(intent, 'supabase', 'another-subject')
+        assert False, 'A link intent must only be used once.'
     except ValueError:
         pass
+
+    wrong_provider_intent = repository.create_link_intent(firebase_user, 'supabase')
+    try:
+        repository.complete_link_intent(wrong_provider_intent, 'clerk', 'wrong-provider-subject')
+        assert False, 'A link intent must be restricted to its selected provider.'
+    except ValueError:
+        pass
+    repository.close()
+
+
+def test_provider_identity_cannot_be_taken_from_another_user(tmp_path) -> None:
+    repository = ScanRepository(f'sqlite:///{tmp_path}/identity-conflict.db')
+    owner = repository.get_or_create_user('supabase', 'existing-subject')
+    other = repository.get_or_create_user('firebase', 'other-subject')
+    intent = repository.create_link_intent(other, 'supabase')
+    try:
+        repository.complete_link_intent(intent, 'supabase', 'existing-subject')
+        assert False, 'An identity already owned by another user must not be reassigned.'
+    except ValueError:
+        pass
+    assert repository.get_or_create_user('supabase', 'existing-subject') == owner
     repository.close()
 
 

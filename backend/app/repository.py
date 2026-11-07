@@ -1,6 +1,8 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
+from secrets import token_urlsafe
+from hashlib import sha256
 from uuid import uuid4
 
 from sqlalchemy import create_engine, inspect, text
@@ -53,6 +55,16 @@ class ScanRepository:
                     email TEXT,
                     created_at TEXT NOT NULL,
                     PRIMARY KEY (provider, subject)
+                )
+            """))
+            connection.execute(text("""
+                CREATE TABLE IF NOT EXISTS link_intents (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id),
+                    provider TEXT NOT NULL,
+                    expires_at TEXT NOT NULL,
+                    used_at TEXT,
+                    created_at TEXT NOT NULL
                 )
             """))
             connection.execute(text("""
@@ -120,6 +132,58 @@ class ScanRepository:
                 "provider": provider, "subject": subject, "user_id": user_id,
                 "email": email, "created_at": datetime.now(timezone.utc).isoformat(),
             })
+
+    def create_link_intent(self, user_id: str, provider: str) -> str:
+        """Create a one-time, ten-minute link token; only its hash is persisted."""
+        raw_token = token_urlsafe(32)
+        now = datetime.now(timezone.utc)
+        with self.engine.begin() as connection:
+            connection.execute(text("""
+                INSERT INTO link_intents (token_hash, user_id, provider, expires_at, used_at, created_at)
+                VALUES (:token_hash, :user_id, :provider, :expires_at, NULL, :created_at)
+            """), {
+                "token_hash": sha256(raw_token.encode("utf-8")).hexdigest(),
+                "user_id": user_id,
+                "provider": provider,
+                "expires_at": (now + timedelta(minutes=10)).isoformat(),
+                "created_at": now.isoformat(),
+            })
+        return raw_token
+
+    def complete_link_intent(self, raw_token: str, provider: str, subject: str, email: str | None = None) -> str:
+        """Consume a valid link intent and attach a verified provider subject to its user."""
+        token_hash = sha256(raw_token.encode("utf-8")).hexdigest()
+        now = datetime.now(timezone.utc)
+        with self.engine.begin() as connection:
+            intent = connection.execute(text("""
+                SELECT user_id, provider, expires_at, used_at
+                FROM link_intents WHERE token_hash = :token_hash
+            """), {"token_hash": token_hash}).mappings().first()
+            if not intent or intent["used_at"] is not None:
+                raise ValueError("This account-link request is invalid or has already been used.")
+            if intent["provider"] != provider:
+                raise ValueError("This account-link request was created for a different provider.")
+            if datetime.fromisoformat(intent["expires_at"]) <= now:
+                raise ValueError("This account-link request has expired. Start linking again.")
+            user_id = str(intent["user_id"])
+            existing = connection.execute(text("""
+                SELECT user_id FROM identity_links
+                WHERE provider = :provider AND subject = :subject
+            """), {"provider": provider, "subject": subject}).first()
+            if existing and existing[0] != user_id:
+                raise ValueError("This provider account is already linked to a different ScamShield account.")
+            if not existing:
+                connection.execute(text("""
+                    INSERT INTO identity_links (provider, subject, user_id, email, created_at)
+                    VALUES (:provider, :subject, :user_id, :email, :created_at)
+                """), {
+                    "provider": provider, "subject": subject, "user_id": user_id,
+                    "email": email, "created_at": now.isoformat(),
+                })
+            connection.execute(text("""
+                UPDATE link_intents SET used_at = :used_at WHERE token_hash = :token_hash
+            """), {"used_at": now.isoformat(), "token_hash": token_hash})
+            return user_id
 
     def save_scan(self, content: str, analysis: Analysis, user_id: str | None = None) -> None:
         if not user_id:

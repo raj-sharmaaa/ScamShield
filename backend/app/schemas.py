@@ -75,6 +75,11 @@ class ReportRequest(BaseModel):
     notes: str | None = Field(default=None, max_length=2_000)
 
 
-class AuthLinkRequest(BaseModel):
+class AuthLinkIntentRequest(BaseModel):
+    provider: Literal['firebase', 'supabase', 'clerk']
+
+
+class AuthCompleteLinkRequest(BaseModel):
     provider: Literal['firebase', 'supabase', 'clerk']
     identity_token: str = Field(min_length=20, max_length=20_000)
+    link_intent: str = Field(min_length=32, max_length=200)

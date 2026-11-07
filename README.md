@@ -39,7 +39,7 @@
 
 The browser obtains an identity token from the selected provider. FastAPI verifies its signature and claims against that provider's public signing keys, then maps the provider subject to an internal ScamShield user ID. The database stores that user ID with each scan and report.
 
-**Email addresses are never used to merge accounts.** A second provider is linked only while an existing ScamShield session is active and the second provider has also authenticated successfully. If a provider identity already belongs to another ScamShield account, linking is rejected.
+**Email addresses are never used to merge accounts.** A second provider is linked only after the signed-in user creates a short-lived one-time link request and the second provider authenticates successfully. The opaque link request survives the provider redirect; raw primary identity tokens are not placed in browser storage. If a provider identity already belongs to another ScamShield account, linking is rejected.
 
 ## Tech stack
 
@@ -172,7 +172,8 @@ python -m pytest backend/tests -q
 | GET | /metrics | Public, process-local counters |
 | GET | /api/v1/auth/providers | Public, lists configured providers |
 | POST | /api/v1/auth/session | Valid provider bearer token |
-| POST | /api/v1/auth/link | Signed-in user + second provider token |
+| POST | /api/v1/auth/link-intent | Signed-in user starts a short-lived, one-time link request |
+| POST | /api/v1/auth/complete-link | Second provider token + one-time link request |
 | POST | /api/v1/analyze | Public scan; only authenticated scans are saved |
 | GET | /api/v1/history | Authenticated, current user only |
 | GET | /api/v1/stats | Authenticated, current user only |
