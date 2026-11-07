@@ -35,7 +35,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. If the API is unavailable, the interface automatically uses the matching local TypeScript rules engine and labels the result `Local engine`.
+Open http://localhost:3000. If the API is unavailable, the interface automatically uses its local TypeScript rules engine and labels the result `Local engine`.
 
 ### Full stack
 
@@ -196,7 +196,7 @@ The repository intentionally contains multiple small modules instead of one gian
 | `DATABASE_URL` | `sqlite:///./data/scamshield.db` | Local persistence URL |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API request limit |
 
-The repository supports SQLite locally and PostgreSQL in hosted environments. Set `DATABASE_URL` to the provider's PostgreSQL connection string for persistent production storage.
+The repository supports SQLite locally and PostgreSQL in hosted environments. Set `DATABASE_URL` to the provider's PostgreSQL connection string for persistent production storage. Set `REDIS_URL` to a managed Redis connection string for shared rate limits across API instances; without it, limits are process-local.
 
 ## Development commands
 
@@ -239,7 +239,7 @@ The blueprint does not create a Vercel project or set Vercel environment variabl
 - URL analysis is lexical only; it does not claim domain reputation, malware status, or page safety.
 - Rate limiting is in-memory and per process. Use a shared Redis limiter behind a load balancer.
 - Use PostgreSQL with encrypted connections for hosted deployments. Add formal schema migrations before evolving the database schema.
-- Add authentication, audit logging, secret management, request tracing, and abuse monitoring before public deployment.
+- Add an identity provider, per-user authorization, audit logging, secret management, request tracing, and abuse monitoring before enabling user-specific data features. Anonymous scan persistence, history, statistics, and reports are disabled in production by default.
 - Treat model output as advisory. Never auto-delete messages or block accounts solely from one score.
 
 ## Roadmap
