@@ -13,6 +13,7 @@ export type Analysis = {
   summary: string;
   findings: Finding[];
   type: ScanType;
+  confidence?: number;
 };
 
 const rules: Array<{ pattern: RegExp; label: string; detail: string; severity: Finding['severity']; points: number }> = [
