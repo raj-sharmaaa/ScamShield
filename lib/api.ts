@@ -1,9 +1,17 @@
 import { analyzeInput, type Analysis, type ScanType } from './analyzer';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ?? '';
+let authToken: string | null = null;
+
+export function setAuthToken(token: string | null) {
+  authToken = token;
+}
+
+function headers(extra: Record<string, string> = {}): Record<string, string> {
+  return { ...extra, ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
+}
 
 export type ApiState = 'connected' | 'fallback';
-
 export type HistoryItem = {
   id: string;
   preview: string;
@@ -12,7 +20,6 @@ export type HistoryItem = {
   verdict: Analysis['verdict'];
   created_at: string;
 };
-
 export type TestCase = {
   id: string;
   title: string;
@@ -23,32 +30,27 @@ export type TestCase = {
 };
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { signal: AbortSignal.timeout(4_000) });
+  const response = await fetch(`${API_URL}${path}`, { headers: headers(), signal: AbortSignal.timeout(4_000) });
   if (!response.ok) throw new Error(`API returned ${response.status}`);
   return response.json() as Promise<T>;
 }
 
 export async function analyzeWithBackend(content: string, type: ScanType): Promise<{ analysis: Analysis; state: ApiState }> {
   if (!API_URL) return { state: 'fallback', analysis: analyzeInput(content, type) };
-
   try {
     const response = await fetch(`${API_URL}/api/v1/analyze`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, type, save_result: true }),
+      headers: headers({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ content, type, save_result: Boolean(authToken) }),
       signal: AbortSignal.timeout(4_000),
     });
-
     if (!response.ok) throw new Error(`API returned ${response.status}`);
     const result = await response.json();
     return {
       state: 'connected',
       analysis: {
-        score: result.score,
-        verdict: result.verdict,
-        summary: result.summary,
-        type: result.type ?? result.scan_type,
-        findings: result.findings,
+        score: result.score, verdict: result.verdict, summary: result.summary,
+        type: result.type ?? result.scan_type, findings: result.findings,
         confidence: typeof result.confidence === 'number' ? result.confidence : undefined,
       },
     };
@@ -57,14 +59,8 @@ export async function analyzeWithBackend(content: string, type: ScanType): Promi
   }
 }
 
-export function getHistory() {
-  return getJson<HistoryItem[]>('/api/v1/history?limit=20');
-}
-
-export function getTestCases() {
-  return getJson<TestCase[]>('/api/v1/test-cases');
-}
-
+export function getHistory() { return getJson<HistoryItem[]>('/api/v1/history?limit=20'); }
+export function getTestCases() { return getJson<TestCase[]>('/api/v1/test-cases'); }
 export function getStats() {
   return getJson<{ total_scans: number; high_risk: number; caution: number; safe: number; average_score: number }>('/api/v1/stats');
 }
@@ -72,7 +68,7 @@ export function getStats() {
 export async function submitReport(content: string, reason: 'missed_scam' | 'false_positive' | 'other', notes: string) {
   const response = await fetch(`${API_URL}/api/v1/reports`, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, reason, notes }),
     signal: AbortSignal.timeout(4_000),
   });

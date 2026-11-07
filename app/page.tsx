@@ -30,13 +30,18 @@ export default function Home() {
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    Promise.allSettled([getHistory(), getTestCases(), getStats()]).then(([recent, cases, summary]) => {
-      if (recent.status === 'fulfilled') setHistory(recent.value);
-      if (cases.status === 'fulfilled') setTestCases(cases.value);
-      if (summary.status === 'fulfilled') setStats(summary.value);
-      if ([recent, cases, summary].some((result) => result.status === 'fulfilled')) setApiState('connected');
-      else setApiState('fallback');
-    });
+    const refreshWorkspace = () => {
+      Promise.allSettled([getHistory(), getTestCases(), getStats()]).then(([recent, cases, summary]) => {
+        if (recent.status === 'fulfilled') setHistory(recent.value);
+        if (cases.status === 'fulfilled') setTestCases(cases.value);
+        if (summary.status === 'fulfilled') setStats(summary.value);
+        if ([recent, cases, summary].some((result) => result.status === 'fulfilled')) setApiState('connected');
+        else setApiState('fallback');
+      });
+    };
+    refreshWorkspace();
+    window.addEventListener('scamshield-auth-changed', refreshWorkspace);
+    return () => window.removeEventListener('scamshield-auth-changed', refreshWorkspace);
   }, []);
 
   function selectType(type: ScanType) {

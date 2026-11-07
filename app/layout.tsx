@@ -2,12 +2,14 @@ import type { Metadata } from 'next';
 import './globals.css';
 import './status.css';
 import './interactions.css';
+import './auth.css';
+import AuthPanel from './auth-panel';
 
 export const metadata: Metadata = {
   title: 'ScamShield | Threat intelligence for everyday messages',
-  description: 'Real-time scam and phishing detection for links, emails, and messages.'
+  description: 'Explainable scam and phishing detection for links, emails, and messages.'
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body>{children}</body></html>;
+  return <html lang="en"><body>{children}<AuthPanel /></body></html>;
 }
