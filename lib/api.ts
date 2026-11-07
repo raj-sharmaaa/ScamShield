@@ -2,13 +2,20 @@ import { analyzeInput, type Analysis, type ScanType } from './analyzer';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '') ?? '';
 let authToken: string | null = null;
+let authTokenProvider: (() => Promise<string | null>) | null = null;
 
 export function setAuthToken(token: string | null) {
   authToken = token;
 }
 
-function headers(extra: Record<string, string> = {}): Record<string, string> {
-  return { ...extra, ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}) };
+export function setAuthTokenProvider(provider: (() => Promise<string | null>) | null) {
+  authTokenProvider = provider;
+}
+
+async function headers(extra: Record<string, string> = {}): Promise<Record<string, string>> {
+  const token = authTokenProvider ? await authTokenProvider() : authToken;
+  if (authTokenProvider) authToken = token;
+  return { ...extra, ...(token ? { Authorization: `Bearer ${token}` } : {}) };
 }
 
 export type ApiState = 'connected' | 'fallback';
@@ -30,7 +37,7 @@ export type TestCase = {
 };
 
 async function getJson<T>(path: string): Promise<T> {
-  const response = await fetch(`${API_URL}${path}`, { headers: headers(), signal: AbortSignal.timeout(4_000) });
+  const response = await fetch(`${API_URL}${path}`, { headers: await headers(), signal: AbortSignal.timeout(4_000) });
   if (!response.ok) throw new Error(`API returned ${response.status}`);
   return response.json() as Promise<T>;
 }
@@ -40,7 +47,7 @@ export async function analyzeWithBackend(content: string, type: ScanType): Promi
   try {
     const response = await fetch(`${API_URL}/api/v1/analyze`, {
       method: 'POST',
-      headers: headers({ 'Content-Type': 'application/json' }),
+      headers: await headers({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ content, type, save_result: Boolean(authToken) }),
       signal: AbortSignal.timeout(4_000),
     });
@@ -68,7 +75,7 @@ export function getStats() {
 export async function submitReport(content: string, reason: 'missed_scam' | 'false_positive' | 'other', notes: string) {
   const response = await fetch(`${API_URL}/api/v1/reports`, {
     method: 'POST',
-    headers: headers({ 'Content-Type': 'application/json' }),
+    headers: await headers({ 'Content-Type': 'application/json' }),
     body: JSON.stringify({ content, reason, notes }),
     signal: AbortSignal.timeout(4_000),
   });

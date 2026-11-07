@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { setAuthToken } from '../lib/api';
+import { setAuthToken, setAuthTokenProvider } from '../lib/api';
 
 type Provider = 'firebase' | 'supabase' | 'clerk';
 type ClerkInstance = { load: () => Promise<void>; session?: { getToken: () => Promise<string | null> } | null; openSignIn: (options?: Record<string, unknown>) => Promise<void> };
@@ -78,6 +78,20 @@ async function getClerk(): Promise<ClerkInstance> {
   return clerkClient;
 }
 
+async function getProviderToken(selected: Provider): Promise<string | null> {
+  if (selected === 'firebase') {
+    const auth = await getFirebaseAuth();
+    return auth.currentUser ? auth.currentUser.getIdToken() : null;
+  }
+  if (selected === 'supabase') {
+    const client = await getSupabase();
+    const { data } = await client.auth.getSession();
+    return data.session?.access_token ?? null;
+  }
+  const clerk = await getClerk();
+  return clerk.session ? clerk.session.getToken() : null;
+}
+
 export default function AuthPanel() {
   const [provider, setProvider] = useState<Provider | null>(null);
   const [email, setEmail] = useState('');
@@ -85,6 +99,7 @@ export default function AuthPanel() {
   const [ready, setReady] = useState(false);
   const [message, setMessage] = useState('');
   const primaryToken = useRef<string | null>(null);
+  const activeProvider = useRef<Provider | null>(null);
   const mounted = useRef(false);
 
   async function acceptToken(token: string, selected: Provider) {
@@ -120,16 +135,26 @@ export default function AuthPanel() {
       setMessage(`Connected with ${selected === 'firebase' ? 'Firebase' : selected === 'supabase' ? 'Supabase' : 'Clerk'}.`);
     }
     primaryToken.current = token;
+    activeProvider.current = selected;
     setAuthToken(token);
+    setAuthTokenProvider(async () => {
+      const current = activeProvider.current;
+      return current ? getProviderToken(current) : null;
+    });
     setProvider(selected);
     window.dispatchEvent(new Event('scamshield-auth-changed'));
   }
 
   async function prepareLink(selected: Provider) {
-    if (!primaryToken.current || !provider || provider === selected) return;
+    const currentProvider = activeProvider.current;
+    if (!currentProvider || currentProvider === selected) return;
+    const currentToken = await getProviderToken(currentProvider);
+    if (!currentToken) throw new Error('The current sign-in session has expired. Sign in again before linking another provider.');
+    primaryToken.current = currentToken;
+    setAuthToken(currentToken);
     const response = await fetch(`${API_URL}/api/v1/auth/link-intent`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${primaryToken.current}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${currentToken}` },
       body: JSON.stringify({ provider: selected }),
     });
     if (!response.ok) {
@@ -174,8 +199,9 @@ export default function AuthPanel() {
           if (token) await acceptToken(token, selected);
         } else {
           await clerk.openSignIn({ forceRedirectUrl: window.location.href });
-          if (clerk.session) {
-            const token = await clerk.session.getToken();
+          const refreshedSession = (clerk as ClerkInstance).session;
+          if (refreshedSession) {
+            const token = await refreshedSession.getToken();
             if (token) await acceptToken(token, selected);
           }
         }
@@ -215,7 +241,7 @@ export default function AuthPanel() {
           if (candidate === 'firebase' && firebaseConfig.apiKey && firebaseConfig.authDomain && firebaseConfig.projectId) {
             const auth = await getFirebaseAuth();
             const currentUser = await new Promise<FirebaseUser | null>((resolve) => {
-              let unsubscribe = () => undefined;
+              let unsubscribe: () => void = () => {};
               unsubscribe = auth.onAuthStateChanged((user) => {
                 unsubscribe();
                 resolve(user);
