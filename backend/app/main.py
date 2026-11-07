@@ -9,12 +9,12 @@ from .ai_explainer import ai_is_configured
 from .config import settings
 from .metrics import metrics
 from .repository import ScanRepository
-from .rate_limit import SlidingWindowLimiter
+from .rate_limit import RedisSlidingWindowLimiter, SlidingWindowLimiter
 from .services import analyze_content
 from .schemas import Analysis, AnalyzeRequest, HistoryItem, ReportRequest, Stats, TestCase
 
 repository = ScanRepository(settings.database_url)
-rate_limiter = SlidingWindowLimiter(settings.rate_limit_per_minute)
+rate_limiter = RedisSlidingWindowLimiter(settings.redis_url, settings.rate_limit_per_minute) if settings.redis_url else SlidingWindowLimiter(settings.rate_limit_per_minute)
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
@@ -39,21 +39,28 @@ def health() -> dict[str, str]:
 def get_metrics() -> dict[str, int]:
     return metrics.snapshot()
 
+def require_public_storage() -> None:
+    if settings.environment.lower() == 'production' and not settings.allow_unauthenticated_storage:
+        raise HTTPException(status_code=503, detail='Saved history and reports are disabled until user authentication is configured.')
+
+
 @app.post('/api/v1/analyze', response_model=Analysis, status_code=status.HTTP_200_OK)
 def create_analysis(payload: AnalyzeRequest) -> Analysis:
     analysis = analyze_content(payload.content, payload.scan_type)
-    if payload.save_result:
+    if payload.save_result and (settings.environment.lower() != 'production' or settings.allow_unauthenticated_storage):
         repository.save_scan(payload.content, analysis)
     return analysis
 
 @app.get('/api/v1/history', response_model=list[HistoryItem])
 def get_history(limit: int = 20) -> list[HistoryItem]:
+    require_public_storage()
     if not 1 <= limit <= 100:
         raise HTTPException(status_code=400, detail='limit must be between 1 and 100')
     return repository.history(limit)
 
 @app.get('/api/v1/stats', response_model=Stats)
 def get_stats() -> Stats:
+    require_public_storage()
     return repository.stats()
 
 @app.get('/api/v1/test-cases', response_model=list[TestCase])
@@ -62,5 +69,6 @@ def get_test_cases() -> list[TestCase]:
 
 @app.post('/api/v1/reports', status_code=status.HTTP_202_ACCEPTED)
 def report_analysis(payload: ReportRequest) -> dict[str, str]:
+    require_public_storage()
     repository.save_report(payload)
     return {'status': 'received', 'message': 'Thanks. Your report will help improve the detector.'}
