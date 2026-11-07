@@ -36,3 +36,42 @@ def test_public_test_cases() -> None:
     response = client.get('/api/v1/test-cases')
     assert response.status_code == 200
     assert len(response.json()) >= 4
+
+
+def test_production_history_and_reports_are_disabled_without_auth(monkeypatch) -> None:
+    from types import SimpleNamespace
+    import app.main as main
+
+    monkeypatch.setattr(main, "settings", SimpleNamespace(
+        environment="production",
+        allow_unauthenticated_storage=False,
+    ))
+
+    assert client.get('/api/v1/history').status_code == 503
+    assert client.get('/api/v1/stats').status_code == 503
+    report = client.post('/api/v1/reports', json={
+        "content": "Suspicious message",
+        "reason": "missed_scam",
+    })
+    assert report.status_code == 503
+
+
+def test_production_scan_does_not_store_submitted_content(monkeypatch) -> None:
+    from types import SimpleNamespace
+    import app.main as main
+
+    saved = []
+    monkeypatch.setattr(main, "settings", SimpleNamespace(
+        environment="production",
+        allow_unauthenticated_storage=False,
+    ))
+    monkeypatch.setattr(main.repository, "save_scan", lambda content, analysis: saved.append(content))
+
+    response = client.post('/api/v1/analyze', json={
+        "type": "Message",
+        "content": "Please verify your account",
+        "save_result": True,
+    })
+
+    assert response.status_code == 200
+    assert saved == []

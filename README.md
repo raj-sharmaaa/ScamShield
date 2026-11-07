@@ -7,8 +7,7 @@ This repository contains a working full-stack foundation:
 - Next.js 16 + TypeScript frontend dashboard
 - FastAPI + Pydantic 2 backend API
 - A deterministic, explainable rules engine with rule IDs, evidence, severity, confidence, and recommendations
-- SQLite persistence for local scan history and reports
-- A repository boundary ready to be replaced with PostgreSQL
+- SQLAlchemy persistence with SQLite for local development and PostgreSQL for hosted deployments
 - Public test cases, API docs, rate limiting, CORS configuration, Docker support, and backend tests
 
 The ML/NLP layer is deliberately not faked. The current rules engine is a transparent baseline that makes product behavior testable. A future model can implement the same analysis contract without changing the dashboard.
@@ -36,7 +35,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. If the API is unavailable, the interface automatically uses the matching local TypeScript rules engine and labels the result `Local engine`.
+Open http://localhost:3000. If the API is unavailable, the interface automatically uses its local TypeScript rules engine and labels the result `Local engine`.
 
 ### Full stack
 
@@ -68,7 +67,7 @@ Copy `.env.example` to `.env.local` if you want to configure the frontend API UR
 NEXT_PUBLIC_API_URL=http://localhost:8000
 ```
 
-The backend stores local data in `backend/data/scamshield.db`. That directory is created automatically and should not be committed.
+The backend stores local data in `backend/data/scamshield.db`. That directory is created automatically and should not be committed. Hosted environments can use PostgreSQL through `DATABASE_URL`.
 
 ### Docker
 
@@ -118,11 +117,11 @@ The response contains:
 
 ### `GET /api/v1/history?limit=20`
 
-Returns recent saved scans. `limit` accepts 1 to 100.
+Returns recent saved scans. `limit` accepts 1 to 100. In production, history is disabled until authentication is integrated; this prevents anonymous visitors from reading shared scan content.
 
 ### `GET /api/v1/stats`
 
-Returns total scans, high-risk count, caution count, safe count, and average score. This powers the future dashboard analytics view.
+Returns total scans, high-risk count, caution count, safe count, and average score. In production this endpoint is also disabled until authentication and per-user authorization are configured.
 
 ### `GET /api/v1/test-cases`
 
@@ -130,7 +129,7 @@ Returns public recruiter-friendly scenarios covering delivery scams, account loc
 
 ### `POST /api/v1/reports`
 
-Accepts a user correction with `reason` equal to `missed_scam`, `false_positive`, or `other`. Reports are stored for future evaluation and model improvement.
+Accepts a correction with `reason` equal to `missed_scam`, `false_positive`, or `other`. Report submission is disabled in production until authentication is integrated.
 
 ## Detection engine
 
@@ -157,12 +156,12 @@ Browser (Next.js)
 FastAPI application
 		|
 		+-- request validation and CORS
-		+-- in-memory IP rate window
+		+-- in-memory rate limiting locally, with optional Redis-backed shared rate limiting
 		+-- explainable detector
 		+-- repository interface
 						|
 						+-- SQLite for local development
-						+-- PostgreSQL adapter planned for production
+						+-- PostgreSQL for hosted deployments
 ```
 
 Important code locations:
@@ -197,7 +196,7 @@ The repository intentionally contains multiple small modules instead of one gian
 | `DATABASE_URL` | `sqlite:///./data/scamshield.db` | Local persistence URL |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API request limit |
 
-The current repository adapter intentionally rejects non-SQLite URLs rather than silently pretending to support PostgreSQL. For production, replace `ScanRepository` with a SQLAlchemy or asyncpg adapter using the same methods and migrations.
+The repository supports SQLite locally and PostgreSQL in hosted environments. Set `DATABASE_URL` to the provider's PostgreSQL connection string for persistent production storage. Set `REDIS_URL` to a managed Redis connection string for shared rate limits across API instances; without it, limits are process-local.
 
 ## Development commands
 
@@ -227,14 +226,20 @@ If `NEXT_PUBLIC_API_URL` is not configured, the dashboard uses its local TypeScr
 
 This repository is a development-ready foundation, not a production security service. Before opening it to public traffic, add persistent PostgreSQL storage, authentication and per-user authorization, shared rate limiting, monitoring, and a security/privacy review. The detector is heuristic and cannot certify that a message or URL is safe.
 
+## Hosted backend (Render blueprint)
+
+A `render.yaml` blueprint is included to provision a Docker-based FastAPI service and a managed PostgreSQL database. Review the plan and estimated costs in Render before applying it. After deployment, copy the API's public HTTPS URL into Vercel as `NEXT_PUBLIC_API_URL`, and set `CORS_ORIGINS` in Render to the exact Vercel origin. Keep AI explanations disabled unless the privacy notice and consent flow are appropriate for submitted data.
+
+The blueprint does not create a Vercel project or set Vercel environment variables automatically. It also does not provide user authentication. In production, anonymous scan persistence, history, statistics, and reports are disabled by default. Add an identity provider and per-user authorization before enabling stored user data. Set `REDIS_URL` to a managed Redis connection string to use the distributed limiter; otherwise the limiter is process-local.
+
 ## Security notes
 
 - Do not send secrets, real passwords, or private customer data to a development instance.
 - The current detector does not fetch or visit submitted URLs, which avoids SSRF in the starter service.
 - URL analysis is lexical only; it does not claim domain reputation, malware status, or page safety.
 - Rate limiting is in-memory and per process. Use a shared Redis limiter behind a load balancer.
-- SQLite is suitable for local development only. Use PostgreSQL with encrypted connections and migrations in production.
-- Add authentication, audit logging, secret management, request tracing, and abuse monitoring before public deployment.
+- Use PostgreSQL with encrypted connections for hosted deployments. Add formal schema migrations before evolving the database schema.
+- Add an identity provider, per-user authorization, audit logging, secret management, request tracing, and abuse monitoring before enabling user-specific data features. Anonymous scan persistence, history, statistics, and reports are disabled in production by default.
 - Treat model output as advisory. Never auto-delete messages or block accounts solely from one score.
 
 ## Roadmap
@@ -249,7 +254,7 @@ This repository is a development-ready foundation, not a production security ser
 
 ### Platform
 
-- Replace SQLite with PostgreSQL migrations and a connection pool
+- Add formal PostgreSQL schema migrations and a connection pool
 - Add user accounts, workspaces, and authenticated scan history
 - Add Redis-backed rate limiting and a background job queue
 - Add structured logs, OpenTelemetry traces, and error monitoring
