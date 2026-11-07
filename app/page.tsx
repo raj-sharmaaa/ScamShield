@@ -30,12 +30,13 @@ export default function Home() {
   const [notice, setNotice] = useState('');
 
   useEffect(() => {
-    Promise.all([getHistory(), getTestCases(), getStats()]).then(([recent, cases, summary]) => {
-      setHistory(recent);
-      setTestCases(cases);
-      setStats(summary);
-      setApiState('connected');
-    }).catch(() => setApiState('fallback'));
+    Promise.allSettled([getHistory(), getTestCases(), getStats()]).then(([recent, cases, summary]) => {
+      if (recent.status === 'fulfilled') setHistory(recent.value);
+      if (cases.status === 'fulfilled') setTestCases(cases.value);
+      if (summary.status === 'fulfilled') setStats(summary.value);
+      if ([recent, cases, summary].some((result) => result.status === 'fulfilled')) setApiState('connected');
+      else setApiState('fallback');
+    });
   }, []);
 
   function selectType(type: ScanType) {
