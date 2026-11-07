@@ -76,7 +76,7 @@ export default function Home() {
       setReportNotes('');
       showNotice('Report received. Thank you for improving ScamShield.');
     } catch {
-      showNotice('The API is offline. Start the backend to send reports.');
+      showNotice('Reports are disabled on this deployment until sign-in is configured.');
     }
   }
 
@@ -102,7 +102,7 @@ export default function Home() {
         <div className="page-content">
           <section className="intro"><div><div className="eyebrow"><span /> LIVE PROTECTION</div><h1>Spot the trap<br /><em>before it catches you.</em></h1><p>Paste anything suspicious. ScamShield reads the signals scammers leave behind and explains what to do next.</p></div><div className="intro-stat"><span>SCANS THIS WORKSPACE</span><strong>{stats.total_scans || '—'}</strong><small>{stats.high_risk ? `${stats.high_risk} high-risk alerts` : 'Build your first scan'}</small></div></section>
 
-          {activeNav === 'Scan history' && <section className="workspace-view"><div className="block-heading"><div><span className="section-kicker">WORKSPACE</span><h2>Scan history</h2></div><span className="view-summary">{history.length} saved results</span></div>{history.length ? <div className="history-grid">{history.map((item) => <button className="history-card" key={item.id} onClick={() => { setInput(item.preview); setScanType(item.type); setActiveNav('Overview'); }}><span className="history-type">{item.type}</span><strong>{item.preview}</strong><small>{new Date(item.created_at).toLocaleString()} <b>{item.score}/100</b></small></button>)}</div> : <p className="empty-state">Your saved analyses will appear here after the first API-backed scan.</p>}</section>}
+          {activeNav === 'Scan history' && <section className="workspace-view"><div className="block-heading"><div><span className="section-kicker">WORKSPACE</span><h2>Scan history</h2></div><span className="view-summary">{history.length} saved results</span></div>{history.length ? <div className="history-grid">{history.map((item) => <button className="history-card" key={item.id} onClick={() => { setInput(item.preview); setScanType(item.type); setActiveNav('Overview'); }}><span className="history-type">{item.type}</span><strong>{item.preview}</strong><small>{new Date(item.created_at).toLocaleString()} <b>{item.score}/100</b></small></button>)}</div> : <p className="empty-state">Saved history is disabled on public deployments until sign-in and per-user access controls are configured.</p>}</section>}
           {activeNav === 'Test library' && <section className="workspace-view"><div className="block-heading"><div><span className="section-kicker">PUBLIC SCENARIOS</span><h2>Test library</h2></div><span className="view-summary">{testCases.length} cases</span></div><div className="library-grid">{testCases.map((testCase) => <button className="library-card" key={testCase.id} onClick={() => loadTestCase(testCase)}><span className="history-type">{testCase.type}</span><strong>{testCase.title}</strong><p>{testCase.content}</p><small>{testCase.tags.join(' · ')} <ArrowUpRight size={13} /></small></button>)}</div></section>}
 
           <section className="scan-layout">
