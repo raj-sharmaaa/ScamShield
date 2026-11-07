@@ -41,6 +41,6 @@ def enhance_explanation(content: str, analysis: Analysis) -> str | None:
         raw = response.choices[0].message.content or '{}'
         result: Any = json.loads(raw)
         explanation = result.get('explanation')
-        return explanation.strip() if isinstance(explanation, str) and explanation.strip() else None
+        return explanation.strip()[:280] if isinstance(explanation, str) and explanation.strip() else None
     except Exception:
         return None
