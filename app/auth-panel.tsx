@@ -124,7 +124,7 @@ export default function AuthPanel() {
       if (selected === 'firebase') {
         if (!firebaseConfig.apiKey || !firebaseConfig.authDomain || !firebaseConfig.projectId) throw new Error('Firebase public configuration is missing.');
         const auth = await getFirebaseAuth();
-        const result = await auth.signInWithPopup(new window.firebase!.auth.GoogleAuthProvider());
+        const result = await auth.signInWithPopup(new (window.firebase!.auth.GoogleAuthProvider)());
         await acceptToken(await result.user.getIdToken(), selected);
       } else if (selected === 'supabase') {
         if (!supabaseUrl || !supabaseKey) throw new Error('Supabase public configuration is missing.');
@@ -147,6 +147,10 @@ export default function AuthPanel() {
           if (token) await acceptToken(token, selected);
         } else {
           await clerk.openSignIn({ forceRedirectUrl: window.location.href });
+          if (clerk.session) {
+            const token = await clerk.session.getToken();
+            if (token) await acceptToken(token, selected);
+          }
         }
       }
     } catch (error) {
