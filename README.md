@@ -7,8 +7,7 @@ This repository contains a working full-stack foundation:
 - Next.js 16 + TypeScript frontend dashboard
 - FastAPI + Pydantic 2 backend API
 - A deterministic, explainable rules engine with rule IDs, evidence, severity, confidence, and recommendations
-- SQLite persistence for local scan history and reports
-- A repository boundary ready to be replaced with PostgreSQL
+- SQLAlchemy persistence with SQLite for local development and PostgreSQL for hosted deployments
 - Public test cases, API docs, rate limiting, CORS configuration, Docker support, and backend tests
 
 The ML/NLP layer is deliberately not faked. The current rules engine is a transparent baseline that makes product behavior testable. A future model can implement the same analysis contract without changing the dashboard.
@@ -197,7 +196,7 @@ The repository intentionally contains multiple small modules instead of one gian
 | `DATABASE_URL` | `sqlite:///./data/scamshield.db` | Local persistence URL |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Per-IP API request limit |
 
-The current repository adapter intentionally rejects non-SQLite URLs rather than silently pretending to support PostgreSQL. For production, replace `ScanRepository` with a SQLAlchemy or asyncpg adapter using the same methods and migrations.
+The repository supports SQLite locally and PostgreSQL in hosted environments. Set `DATABASE_URL` to the provider's PostgreSQL connection string for persistent production storage.
 
 ## Development commands
 
@@ -227,13 +226,19 @@ If `NEXT_PUBLIC_API_URL` is not configured, the dashboard uses its local TypeScr
 
 This repository is a development-ready foundation, not a production security service. Before opening it to public traffic, add persistent PostgreSQL storage, authentication and per-user authorization, shared rate limiting, monitoring, and a security/privacy review. The detector is heuristic and cannot certify that a message or URL is safe.
 
+## Hosted backend (Render blueprint)
+
+A `render.yaml` blueprint is included to provision a Docker-based FastAPI service and a managed PostgreSQL database. Review the plan and estimated costs in Render before applying it. After deployment, copy the API's public HTTPS URL into Vercel as `NEXT_PUBLIC_API_URL`, and set `CORS_ORIGINS` in Render to the exact Vercel origin. Keep AI explanations disabled unless the privacy notice and consent flow are appropriate for submitted data.
+
+The blueprint does not create a Vercel project or set Vercel environment variables automatically. It also does not provide user authentication. Do not treat shared scan history or feedback reports as private user data until an identity provider and per-user authorization have been integrated.
+
 ## Security notes
 
 - Do not send secrets, real passwords, or private customer data to a development instance.
 - The current detector does not fetch or visit submitted URLs, which avoids SSRF in the starter service.
 - URL analysis is lexical only; it does not claim domain reputation, malware status, or page safety.
 - Rate limiting is in-memory and per process. Use a shared Redis limiter behind a load balancer.
-- SQLite is suitable for local development only. Use PostgreSQL with encrypted connections and migrations in production.
+- Use PostgreSQL with encrypted connections for hosted deployments. Add formal schema migrations before evolving the database schema.
 - Add authentication, audit logging, secret management, request tracing, and abuse monitoring before public deployment.
 - Treat model output as advisory. Never auto-delete messages or block accounts solely from one score.
 
@@ -249,7 +254,7 @@ This repository is a development-ready foundation, not a production security ser
 
 ### Platform
 
-- Replace SQLite with PostgreSQL migrations and a connection pool
+- Add formal PostgreSQL schema migrations and a connection pool
 - Add user accounts, workspaces, and authenticated scan history
 - Add Redis-backed rate limiting and a background job queue
 - Add structured logs, OpenTelemetry traces, and error monitoring
